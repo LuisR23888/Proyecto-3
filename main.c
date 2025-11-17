@@ -26,8 +26,8 @@
 #include "string.h"
 #include "stdio.h"
 
-#include "ili9341.h"
-#include "Bitmaps.h"
+#include "ili9341.h" // librería para funcionamiento de la pantalla LCD
+#include "Bitmaps.h" // librería para recursos gráficos
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,6 +38,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 SPI_HandleTypeDef hspi1;
+
+/* Variables para SD */
 FATFS fs;
 FATFS *pfs;
 FIL fil;
@@ -46,23 +48,24 @@ DWORD fre_clust;
 uint32_t totalSpace, freeSpace;
 char buffer[100];
 
+/* Variables para antirrebote de botones */
 uint32_t ultimo_tiempo_pb1 = 0;
 uint32_t ultimo_tiempo_pb2 = 0;
 uint32_t ultimo_tiempo_pb3 = 0;
 
-
+/*  Flags de estado para los botones */
 uint8_t estado1 = 0;
 uint8_t estado2 = 0;
 uint8_t estado3 = 0;
 
-
+/* Contadores para cada instrucción */
 int8_t contador1 = 0;
 int8_t contador2 = 0;
 int8_t contador3 = 0;
 
-uint8_t datoTEMP = 0;
+uint8_t datoTEMP = 0; // Variable para almacenar la temperatura recibida
 
-extern uint16_t fondo[];
+extern uint16_t fondo[]; // Imagen de fondo para la LCD
 
 /* USER CODE END PD */
 
@@ -89,6 +92,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
+/* Función helper para transmitir strings por UART*/
 void transmit_uart(char *string){
 	uint16_t len = strlen(string);
 	HAL_UART_Transmit(&huart2, (uint8_t*) string, len, 1000);
@@ -142,6 +146,7 @@ int main(void)
   	LCD_Bitmap(0, 0, 320, 240, fondo);
   	LCD_Print("Inicializando...", 64, 112, 2, 0x001F, 0x4c9d);
 
+/*  Montaje de la tarjeta Micro */
   fres = f_mount(&fs, "/", 0);
   if (fres == FR_OK) {
 	  transmit_uart("Micro SD card is mounted successfully!\n");
@@ -157,9 +162,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  /* Lectura de botones */
 	  if (estado1==1){
-		  estado1=0;
-		  contador1++;
+		  estado1=0; // Limpia la bandera
+		  contador1++; // Incrementa el contador 1
 		  if(contador1==2){
 			  contador1=1;
 		  }
@@ -180,11 +186,16 @@ int main(void)
 	  }
 
 
-
+	/* Acción 1: Medir Temperatura */
 	  if(contador1==1){
+			// 1. Envía un comando (1) al ESP32 por UART3 para pedir la temperatura
 		  uint8_t cmd_medir = 1;
 		  HAL_UART_Transmit(&huart3, &cmd_medir, 1, HAL_MAX_DELAY);
+
+			// 2. Espera recibir un byte de respuesta (la temperatura)
 		  HAL_StatusTypeDef res = HAL_UART_Receive(&huart3, &datoTEMP, sizeof(datoTEMP), HAL_MAX_DELAY);
+		  
+		  // 3. Procesa y muestra la respuesta en la LCD y UART de debug
 		  if (res == HAL_OK) {
 			  sprintf(buffer, "Respuesta recibida de ESP32: %d\r\n", datoTEMP);
 			  transmit_uart(buffer);
@@ -192,7 +203,7 @@ int main(void)
 			  char temp_str[20];
 			  sprintf(temp_str, "%d C", datoTEMP);
 
-
+			// Actualiza la pantalla LCD
 			  LCD_Clear(0x00);
 			  LCD_Bitmap(0, 0, 320, 240, fondo);
 			  LCD_Print("Dato obtenido:", 75, 100, 2, 0x001F, 0x4c9d);
@@ -205,21 +216,28 @@ int main(void)
 		  contador1=0;
 	  }
 
+	  /* --- Acción 2: Guardar Dato en SD --- */
 	  if(contador2==1){
 
+		  // Prepara el string a guardar
 		  sprintf(buffer, "Valor de temperatura guardado: %d\r\n", datoTEMP);
 
+		   // 1. Envía comando de "guardar" al ESP32
 		  uint8_t cmd_guardar = 2;
 		  HAL_UART_Transmit(&huart3, &cmd_guardar, 1, HAL_MAX_DELAY);
 
+		   // 2. Abre el archivo "Reporte.txt"
 		  fres = f_open(&fil, "Reporte.txt", FA_OPEN_APPEND | FA_WRITE | FA_READ);
 		  if (fres == FR_OK) {
 			  transmit_uart("File opened for reading.\n");
 		  } else if (fres != FR_OK) {
 			  transmit_uart("File was not opened for reading!\n");
 		  }
+		  
+		  // 3. Escribe el valor de temperatura en el archivo
 		  f_puts(buffer, &fil);
 
+		  // 4. Cierra el archivo
 		  fres = f_close(&fil);
 		  if (fres == FR_OK) {
 			  transmit_uart("The file is closed.\n");
@@ -227,6 +245,7 @@ int main(void)
 			  transmit_uart("The file was not closed.\n");
 		  }
 
+		  // 5. Muestra mensaje en la LCD
 		  LCD_Clear(0x00);
 		  LCD_Bitmap(0, 0, 320, 240, fondo);
 		  LCD_Print("Guardando dato...", 64, 112, 2, 0x001F, 0x4c9d);
@@ -235,14 +254,18 @@ int main(void)
 
 	  }
 
+	   /* --- Acción 3: Desmontar SD --- */
 	  if(contador3==1){
 
+		   // 1. Envía comando de "cerrar" al ESP32
 		  uint8_t cmd_cerrar = 3;
 		  HAL_UART_Transmit(&huart3, &cmd_cerrar, 1, HAL_MAX_DELAY);
 
+		   // 2. Desmonta la unidad de la SD card
 		  f_mount(NULL, "", 1);
 		  if (fres == FR_OK) {
 		  transmit_uart("The Micro SD card is unmounted!\n");
+			// 3. Muestra mensaje en la LCD  
 		  LCD_Clear(0x00);
 		  LCD_Bitmap(0, 0, 320, 240, fondo);
 		  LCD_Print("SD Desmontada", 64, 112, 2, 0x001F, 0x4c9d);
@@ -250,7 +273,7 @@ int main(void)
 		  transmit_uart("The Micro SD was not unmounted!");
 		  }
 
-		  contador3=0;
+		  contador3=0; // Resetea el contador
 
 	  }
 
@@ -546,3 +569,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
