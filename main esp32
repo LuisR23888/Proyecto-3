@@ -8,10 +8,11 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include <Wire.h> 
-
+#include <Adafruit_NeoPixel.h>
 
 /*•︶°︶•︶°︶•︶°︶• Pines y Direcciones •︶°︶•︶°︶•︶°︶• */
-
+#define PIN 18 // Pin del NeoPixel para indicar estados
+#define NUMPIXELS 1
 #define LM75_I2C_ADDR 0x48 // Dirección I2C del sensor de temperatura LM75
 
 // Pines I2C 
@@ -19,7 +20,8 @@
 #define I2C_SCL 22
 
 /*•︶°︶•︶°︶• Variables globales •︶°︶•︶°︶• */
-
+Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+#define DELAYVAL 500
 HardwareSerial& stmSerial = Serial2;
 
 float lastTemperature = 0.0; //
@@ -43,6 +45,7 @@ void setup() {
 }
 
 void loop() {
+ pixels.clear();
     if (stmSerial.available() > 0) {
     
         // Lee el comando
@@ -82,17 +85,23 @@ void loop() {
             } 
             //Separador para el monitor serial
             Serial.println("-------------------------------------");
-
+            delay(200); 
+            pixels.setPixelColor(0, pixels.Color(150,150,20));
+            pixels.show();
             comando=0;
             
         } else if (comando == 2) {
             Serial.println("Guardando dato");
             Serial.println("-------------------------------------");
+            pixels.setPixelColor(0, pixels.Color(20,255,100));
+            pixels.show();
             comando=0;
             
         } else if (comando == 3) {
             Serial.println("Desmontando SD");
             Serial.println("-------------------------------------");
+            pixels.setPixelColor(0, pixels.Color(255,30,130));
+            pixels.show();
             comando=0;
         }
 
