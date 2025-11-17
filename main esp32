@@ -1,0 +1,101 @@
+// Universidad del Valle de Guatemala
+// BE3029 - Electronica Digital 2
+// Luis Rodríguez - Amy Velásquez
+// Proyecto 3
+// 04/11/2025
+
+/*•︶°︶•︶°︶•︶°︶• Librerías •︶°︶•︶°︶•︶°︶• */
+#include <Arduino.h>
+#include <stdint.h>
+#include <Wire.h> 
+
+
+/*•︶°︶•︶°︶•︶°︶• Pines y Direcciones •︶°︶•︶°︶•︶°︶• */
+
+#define LM75_I2C_ADDR 0x48 // Dirección I2C del sensor de temperatura LM75
+
+// Pines I2C 
+#define I2C_SDA 21
+#define I2C_SCL 22
+
+/*•︶°︶•︶°︶• Variables globales •︶°︶•︶°︶• */
+
+HardwareSerial& stmSerial = Serial2;
+
+float lastTemperature = 0.0; //
+/*•︶°︶•︶°︶• Prototipos •︶°︶•︶°︶• */
+
+
+void setup() {
+    //Inicializa la comunicación serial 
+    Serial.begin(115200); 
+      // Inicia el puerto serial que habla con la STM32
+    stmSerial.begin(115200);
+  
+    //Inicializa el bus I2C (Wire) como MASTER. Este bus es para leer el LM75.
+    Wire.begin(I2C_SDA, I2C_SCL);
+    pixels.begin();
+    
+    delay(100);
+    
+    Serial.println("ESP32 listo, esperando comandos de la STM32...");
+    
+}
+
+void loop() {
+    if (stmSerial.available() > 0) {
+    
+        // Lee el comando
+        uint8_t comando = stmSerial.read();
+
+        if (comando == 1) {
+            Serial.println("Comando 1 (Temp) recibido.");
+            
+            //Inicia la comunicación I2C con el LM75.
+            Wire.beginTransmission(LM75_I2C_ADDR);
+            Wire.write(0x00); // Escribe la dirección del Registro de Temperatura
+            Wire.endTransmission();
+            
+            //Solicita 2 bytes de datos (MSB y LSB) al LM75.
+            Wire.requestFrom(LM75_I2C_ADDR, 2);
+            
+            if (Wire.available() >= 2) {
+                uint8_t msb = Wire.read(); // Byte más significativo
+                uint8_t lsb = Wire.read(); // Byte menos significativo
+                
+                //Procesar los bytes para obtener la temperatura.
+                int16_t temp = (msb << 8) | lsb; // Combina los bytes en un entero
+                temp >>= 5; // Desplaza 5 bits a la derecha para eliminar los bits no usados
+                lastTemperature = temp * 0.125; // 
+                
+                Serial.print("Temperatura leída: ");
+                Serial.print(lastTemperature);
+                Serial.println(" °C");
+
+                //Se envia la temperatura obtenida al STM32
+                uint8_t temp_para_enviar = (uint8_t)lastTemperature;
+                Serial.print("Enviado a STM32: ");
+                Serial.println(temp_para_enviar);
+
+                stmSerial.write(temp_para_enviar);
+                
+            } 
+            //Separador para el monitor serial
+            Serial.println("-------------------------------------");
+
+            comando=0;
+            
+        } else if (comando == 2) {
+            Serial.println("Guardando dato");
+            Serial.println("-------------------------------------");
+            comando=0;
+            
+        } else if (comando == 3) {
+            Serial.println("Desmontando SD");
+            Serial.println("-------------------------------------");
+            comando=0;
+        }
+
+    }   
+
+}
